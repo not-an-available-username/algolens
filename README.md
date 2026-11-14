@@ -1,6 +1,6 @@
 # AlgoLens
 
-An interactive computer-science workstation for exploring algorithms and data structures through execution visualizations.
+An interactive algorithm visualizer.
 
 ## Current implementation
 
@@ -37,7 +37,7 @@ The Vite base path is configured as `/algolens/` for GitHub Pages deployment.
 
 ## Roadmap
 
-The architecture separates algorithm step generation from presentation. Searching, graph algorithms, dynamic programming, and data-structure modules can be added under `src/algorithms` and integrated into the shared workstation shell.
+The architecture separates algorithm step generation from presentation. Searching, graph algorithms, dynamic programming, and data-structure modules can be added under `src/algorithms` and integrated into the shared app shell.
 
 ## Deployment
 
