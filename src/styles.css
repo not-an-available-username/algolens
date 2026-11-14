@@ -758,3 +758,10 @@ input:not([type=range]),textarea{cursor:text}
     repeating-linear-gradient(to bottom,transparent 0 3px,rgba(47,106,29,.10) 3px 4px)}
 @media(prefers-reduced-motion:reduce){.glitch-flash{display:none}}
 .panel-heading .type-cursor{height:.9em;width:.5em}
+
+/* v10: transition toned way down - one faint hairline, quick fade */
+.glitch-flash::before{top:0;height:1px;background:rgba(165,230,109,.35);box-shadow:0 0 6px rgba(165,230,109,.25);animation:scanSweep .4s ease-out both}
+.light-theme .glitch-flash::before{background:rgba(47,106,29,.25);box-shadow:none}
+@keyframes scanSweep{0%{transform:translateY(0);opacity:1}100%{transform:translateY(100vh);opacity:0}}
+.page-enter,.page-home.page-enter,.home-screen.page-enter{animation:quietIn .25s ease-out both}
+@keyframes quietIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
