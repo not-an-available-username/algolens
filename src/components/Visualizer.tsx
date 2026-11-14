@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Code2, Pause, Play, Plus, RotateCcw, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
 import { beep, chime, pitch, readPref, trackIds, unlockAudio, writePref } from './fx'
+import Typewriter from './Typewriter'
 import { generateSteps } from '../algorithms/sorting'
 import type { Algorithm, Step as SortStep } from '../algorithms/sorting'
 import { generateSearchSteps } from '../algorithms/searching'
@@ -116,7 +117,7 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
 
   return <main className="workspace visualizer-page page-enter">
     <div className="crumb"><button onClick={onLibrary}>{t('LIBRARY', '演算法庫')}</button><span>/</span><button onClick={onLibrary}>{zh ? cat.zh : cat.en}</button><span>/</span><strong>{name.toUpperCase()}</strong></div>
-    <div className="visualizer-heading"><div><div className="eyebrow">{zh ? cat.zh : cat.en} {t('MODULE', '模組')} / {String(catIndex).padStart(2, '0')}.{String(modIndex).padStart(2, '0')}</div><h1>{name}</h1></div><button className="outline-button" onClick={onLibrary}><ArrowLeft size={13} /> {t('BACK TO LIBRARY', '返回演算法庫')}</button></div>
+    <div className="visualizer-heading"><div><div className="eyebrow">{zh ? cat.zh : cat.en} {t('MODULE', '模組')} / {String(catIndex).padStart(2, '0')}.{String(modIndex).padStart(2, '0')}</div><h1><Typewriter text={name} /></h1></div><button className="outline-button" onClick={onLibrary}><ArrowLeft size={13} /> {t('BACK TO LIBRARY', '返回演算法庫')}</button></div>
     <div className="control-strip">
       <div className="control-group"><button className="run-button" onClick={() => { if (step >= steps.length - 1) setStep(0); setPlaying(!playing) }}>{playing ? <Pause size={13} /> : <Play size={13} />} {playing ? t('PAUSE', '暫停') : t('RUN', '執行')}</button><button onClick={() => go(step - 1)}><SkipBack size={13} /> {t('PREV', '上一步')}</button><button onClick={() => go(step + 1)}><SkipForward size={13} /> {t('NEXT', '下一步')}</button><button onClick={reset}><RotateCcw size={13} /> {t('RESET', '重設')}</button></div>
       <label className="speed-control">{t('SPEED', '速度')} <input type="range" min="80" max="1200" step="40" value={1280 - speed} onChange={e => setSpeed(1280 - Number(e.target.value))} /></label>
@@ -133,8 +134,8 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
         {mod.category === 'dp' && <DPView s={current as DPStep} t={t} />}
         <div className="execution-state"><span className="green">&gt; STATE</span><span key={step}>{current.description}</span></div>
       </section>
-      <section className="panel code-panel" data-id="ROM_LISTING"><div className="panel-heading"><span><Code2 size={13} /> {t('PSEUDOCODE', '偽程式碼')}</span><span className="panel-tag">{t('SYNCED', '同步中')}</span></div><div className="code-lines">{mod.pseudocode.map((line, i) => <div className={current.line === i ? 'code-line active-line' : 'code-line'} key={i}><span>{String(i + 1).padStart(2, '0')}</span><code>{line}</code></div>)}</div><div className="panel-foot">{t('EXECUTION TRACE / LINE', '執行紀錄 / 行')} {String(current.line + 1).padStart(2, '0')}</div></section>
-      <section className="panel input-panel" data-id="IO_PORT"><div className="panel-heading"><span>{t('INPUT CONFIGURATION', '輸入設定')}</span><span className="panel-tag">{t('CUSTOM', '自訂')}</span></div>
+      <section className="panel code-panel" data-id="ROM_LISTING"><div className="panel-heading"><span><Code2 size={13} /> <Typewriter text={t('PSEUDOCODE', '偽程式碼')} speed={30} holdCursor={900} /></span><span className="panel-tag">{t('SYNCED', '同步中')}</span></div><div className="code-lines">{mod.pseudocode.map((line, i) => <div className={current.line === i ? 'code-line active-line' : 'code-line'} key={i}><span>{String(i + 1).padStart(2, '0')}</span><code>{line}</code></div>)}</div><div className="panel-foot">{t('EXECUTION TRACE / LINE', '執行紀錄 / 行')} {String(current.line + 1).padStart(2, '0')}</div></section>
+      <section className="panel input-panel" data-id="IO_PORT"><div className="panel-heading"><span><Typewriter text={t('INPUT CONFIGURATION', '輸入設定')} speed={24} holdCursor={900} /></span><span className="panel-tag">{t('CUSTOM', '自訂')}</span></div>
         {(mod.category === 'sorting' || mod.category === 'searching') && <>
           <label className="field-label">{t('ARRAY VALUES', '陣列數值')} <small>{t('COMMA SEPARATED · MAX 100', '以逗號分隔 · 最多 100 個')}</small></label>
           <textarea value={values} onChange={e => edit(setValues)(e.target.value)} spellCheck={false} />
@@ -240,7 +241,7 @@ function SortView({ s, t, algo, ids, done }: { s: SortStep; t: T; algo: Algorith
   s.comparing.forEach(i => (marks[i] = '▲'))
   s.swapped.forEach(i => (marks[i] = '!'))
   return <>
-    <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('ARRAY', '陣列')} / {s.array.length} {t('ELEMENTS', '個元素')}</span></div>
+    <div className="panel-heading"><span><Typewriter text={t('EXECUTION VISUALIZATION', '執行視覺化')} speed={22} holdCursor={900} /></span><span className="panel-tag">{t('ARRAY', '陣列')} / {s.array.length} {t('ELEMENTS', '個元素')}</span></div>
     <InfoStrip label={t('SORTED REGION:', '已排序區：')} value={`[${s.sorted.length} / ${s.array.length}] ${'█'.repeat(Math.round(s.sorted.length / s.array.length * 12)).padEnd(12, '·')}`}
       legend={[{ cls: 'sw-default', label: t('Unsorted', '未排序') }, { cls: 'sw-compare', label: t('Compare', '比較中') }, { cls: 'sw-swap', label: t('Active / Swap', '移動中') }, { cls: 'sw-sorted', label: t('Sorted', '已排序') }]} />
     <Bars array={s.array} ids={ids} sweep={done} above={above} marks={marks} cls={i => s.swapped.includes(i) ? 'bar-swap' : s.comparing.includes(i) ? 'bar-compare' : s.sorted.includes(i) ? 'bar-sorted' : ''} />
@@ -257,7 +258,7 @@ function SearchView({ s, t, target, algo }: { s: SearchStep; t: T; target: numbe
     else { if (lo >= 0 && lo < s.array.length) below[lo] = { text: `lo=${lo}`, tone: 'cold' }; if (hi >= 0 && hi < s.array.length) below[hi] = { text: `hi=${hi}`, tone: 'cold' } }
   }
   return <>
-    <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('TARGET', '目標')} = {target}</span></div>
+    <div className="panel-heading"><span><Typewriter text={t('EXECUTION VISUALIZATION', '執行視覺化')} speed={22} holdCursor={900} /></span><span className="panel-tag">{t('TARGET', '目標')} = {target}</span></div>
     <InfoStrip label={t('SEARCH WINDOW:', '搜尋範圍：')} value={s.range ? `[lo: ${s.range[0]} ${'·'.repeat(10)} hi: ${s.range[1]}]` : s.found !== null ? `[${t('HIT AT', '命中')} ${s.found}]` : '[ — ]'}
       legend={[{ cls: 'sw-sorted', label: t('Window', '範圍') }, { cls: 'sw-compare', label: t('Probe', '檢查中') }, { cls: 'sw-dim', label: t('Eliminated', '已排除') }, { cls: 'sw-swap', label: t('Found', '找到') }]} />
     <Bars lanes sweep={false} array={s.array} above={above} below={below} marks={marks} cls={i => s.found === i ? 'bar-swap' : s.checking.includes(i) ? 'bar-compare' : s.eliminated.includes(i) ? 'bar-dim' : s.range && i >= s.range[0] && i <= s.range[1] ? 'bar-sorted' : ''} />
@@ -280,7 +281,7 @@ function GraphView({ s, t, algo, graph, onMove }: { s: GraphStep; t: T; algo: Gr
   }
   const cur = s.current ? pos[s.current] : null
   return <>
-    <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('GRAPH', '圖')} / {graph.nodes.length} V / {graph.edges.length} E</span></div>
+    <div className="panel-heading"><span><Typewriter text={t('EXECUTION VISUALIZATION', '執行視覺化')} speed={22} holdCursor={900} /></span><span className="panel-tag">{t('GRAPH', '圖')} / {graph.nodes.length} V / {graph.edges.length} E</span></div>
     <InfoStrip label={`${frontierName}:`} value={`[${s.frontier.join(', ')}]`}
       legend={[{ cls: 'sw-default', label: t('Unseen', '未探索') }, { cls: 'sw-frontier', label: frontierName }, { cls: 'sw-swap', label: t('Current', '目前') }, { cls: 'sw-sorted', label: algo === 'dijkstra' ? t('Settled', '已確定') : t('Visited', '已走訪') }]} />
     <div className="graph-wrap">
@@ -318,7 +319,7 @@ function DPView({ s, t }: { s: DPStep; t: T }) {
   const isDep = (r: number, c: number) => s.deps.some(([a, b]) => a === r && b === c)
   const filled = s.table.flat().filter(v => v !== null).length, total = s.table.flat().length
   return <>
-    <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('TABLE', '表格')} / {s.table.length} × {s.table[0]?.length ?? 0}</span></div>
+    <div className="panel-heading"><span><Typewriter text={t('EXECUTION VISUALIZATION', '執行視覺化')} speed={22} holdCursor={900} /></span><span className="panel-tag">{t('TABLE', '表格')} / {s.table.length} × {s.table[0]?.length ?? 0}</span></div>
     <InfoStrip label={t('ACTIVE CELL:', '目前格：')} value={s.active ? `[r: ${s.active[0]} · c: ${s.active[1]}]  ${filled}/${total}` : `[ — ]  ${filled}/${total}`}
       legend={[{ cls: 'sw-dim', label: t('Empty', '未計算') }, { cls: 'sw-default', label: t('Filled', '已計算') }, { cls: 'sw-compare', label: t('Depends on', '依賴') }, { cls: 'sw-swap', label: t('Current', '目前') }]} />
     <div className="dp-wrap">
