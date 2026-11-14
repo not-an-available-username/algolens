@@ -183,8 +183,31 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
 
     const dustPts: number[] = []
     for (let i = 0; i < 800; i++) dustPts.push((Math.random() - .5) * 14, (Math.random() - .5) * 10, (Math.random() - .5) * 12)
-    const dust = mkPoints(dustPts, .02)
+    const dust = mkPoints(dustPts, .026)
     scene.add(dust.mesh)
+    const dustBase = Float32Array.from(dustPts)
+    const dustOff = new Float32Array(dustPts.length)
+    const dustAttr = dust.mesh.geometry.attributes.position as THREE.BufferAttribute
+    const tmpV = new THREE.Vector3(), tmpDir = new THREE.Vector3(), invDust = new THREE.Matrix4()
+    let mouseIn = false
+    const pushDust = () => {
+      dust.mesh.updateMatrixWorld()
+      invDust.copy(dust.mesh.matrixWorld).invert()
+      const R = .22, arr = dustAttr.array as Float32Array
+      for (let i = 0; i < dustBase.length; i += 3) {
+        if (mouseIn) {
+          tmpV.set(dustBase[i] + dustOff[i], dustBase[i + 1] + dustOff[i + 1], dustBase[i + 2] + dustOff[i + 2]).applyMatrix4(dust.mesh.matrixWorld).project(camera)
+          const dx = (tmpV.x - hoverX) * camera.aspect, dy = tmpV.y - hoverY, d = Math.hypot(dx, dy)
+          if (d < R && tmpV.z < 1) {
+            tmpDir.set(dx, dy, 0).normalize().transformDirection(invDust).multiplyScalar((1 - d / R) * .09)
+            dustOff[i] += tmpDir.x; dustOff[i + 1] += tmpDir.y; dustOff[i + 2] += tmpDir.z
+          }
+        }
+        dustOff[i] *= .965; dustOff[i + 1] *= .965; dustOff[i + 2] *= .965
+        arr[i] = dustBase[i] + dustOff[i]; arr[i + 1] = dustBase[i + 1] + dustOff[i + 1]; arr[i + 2] = dustBase[i + 2] + dustOff[i + 2]
+      }
+      dustAttr.needsUpdate = true
+    }
 
     // ---- CRT canvas texture ----
     const crt = document.createElement('canvas')
@@ -201,8 +224,31 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
     screen.position.set(0, .38, 1.09)
     group.add(screen)
 
+    let booted = false
+    try { booted = sessionStorage.getItem('algolens-booted') === '1' } catch { /* storage unavailable */ }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) booted = true
+    const BOOT_LOG = 2700, BOOT_REVEAL = 700
+    let bootStart = -1
+    const bootLines = (p: number) => {
+      const bar = Math.min(16, Math.floor(Math.max(0, p - .45) / .35 * 16))
+      return [
+        'ALGOLENS BIOS v4.2  (C) 1987 PHOSPHOR SYSTEMS',
+        '',
+        'CPU ............... 68030 @ 33.333MHz   OK',
+        'MEM CHECK ......... 640K                OK',
+        'VRAM .............. 0x0000_FFFF         OK',
+        `LOADING MODULES  [${'#'.repeat(bar)}${'-'.repeat(16 - bar)}] ${String(Math.round(bar / 16 * 100)).padStart(3)}%`,
+        bar >= 16 ? 'SORT  SEARCH  GRAPH  DP ......... 13 LOADED' : '',
+        bar >= 16 ? '' : '',
+        bar >= 16 ? '>>> STARTING PHOSPHOR TERMINAL' : ''
+      ]
+    }
+
     const draw = (time: number) => {
       const L = lightRef.current
+      if (bootStart < 0) bootStart = time
+      const e = booted ? Infinity : time - bootStart
+      if (e > BOOT_LOG + BOOT_REVEAL && !booted) { booted = true; try { sessionStorage.setItem('algolens-booted', '1') } catch { /* ignore */ } }
       const P = L
         ? { bg0: '#e9f0de', bg1: '#dce6cf', bg2: '#cfdcc0', grid: 'rgba(60,100,40,.10)', grey: '#55604f', green: '#2f6a1d', bright: '#16380b', rule: '#a9b89c', glow: 0 }
         : { bg0: 'rgba(14,34,16,.95)', bg1: 'rgba(9,21,12,.98)', bg2: 'rgba(4,9,5,1)', grid: 'rgba(75,130,60,.12)', grey: '#8C9B92', green: '#A3D977', bright: '#BBF38D', rule: '#26302B', glow: 1 }
@@ -213,6 +259,29 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       ctx.strokeStyle = P.grid; ctx.lineWidth = 1
       for (let y = 0; y < 768; y += 8) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke() }
 
+      if (e < BOOT_LOG) {
+        // typed boot log, ~55 chars per 100ms
+        const lines = bootLines(e / BOOT_LOG)
+        let budget = Math.floor(e / 9)
+        ctx.font = '700 22px "Space Mono", monospace'
+        ctx.shadowColor = P.green; ctx.shadowBlur = 6 * P.glow
+        lines.forEach((line, i) => {
+          if (budget <= 0) return
+          const shown = line.slice(0, budget); budget -= line.length + 4
+          ctx.fillStyle = line.includes('OK') || line.startsWith('>>>') ? P.green : P.grey
+          ctx.fillText(shown, 70, 110 + i * 44)
+          if (budget <= 0 && Math.floor(time / 250) % 2 === 0) { ctx.fillStyle = P.bright; ctx.fillRect(70 + ctx.measureText(shown).width + 6, 92 + i * 44, 13, 22) }
+        })
+        ctx.shadowBlur = 0
+        const sy0 = (time / 3) % 768
+        ctx.fillStyle = L ? 'rgba(255,255,255,.2)' : 'rgba(163,217,119,.08)'; ctx.fillRect(0, sy0, 1024, 30)
+        crtTex.needsUpdate = true
+        return
+      }
+      const rows = e < BOOT_LOG + BOOT_REVEAL ? Math.floor((e - BOOT_LOG) / (BOOT_REVEAL / ASCII.length)) + 1 : ASCII.length
+      const flash = e < BOOT_LOG + 120
+      if (flash) { ctx.fillStyle = L ? 'rgba(255,255,255,.6)' : 'rgba(187,243,141,.25)'; ctx.fillRect(0, 0, 1024, 768) }
+
       ctx.shadowBlur = 0
       ctx.font = '700 20px "Space Mono", monospace'
       ctx.fillStyle = P.grey; ctx.fillText('+-- ALGOLENS WORKSTATION 64K --+', 64, 70)
@@ -222,7 +291,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
 
       ctx.font = 'bold 33px "Space Mono", monospace'
       ctx.shadowColor = P.bright; ctx.shadowBlur = 14 * P.glow; ctx.fillStyle = P.bright
-      ASCII.forEach((line, i) => ctx.fillText(line, 120, 190 + i * 44))
+      ASCII.slice(0, rows).forEach((line, i) => ctx.fillText(line, 120, 190 + i * 44))
 
       ctx.shadowBlur = 8 * P.glow; ctx.fillStyle = P.green
       ctx.font = '700 24px "Space Mono", monospace'
@@ -255,7 +324,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       set(chassis.mat, L ? 0x3c4237 : 0x8c9b92, L ? .6 : .7)
       set(edges.mat, L ? 0x14180f : 0xe4e6d8, L ? .9 : 1)
       set(phosphor.mat, L ? 0x7da461 : 0x487a2b, L ? .45 : .7)
-      set(dust.mat, L ? 0x8aa57a : 0x588442, L ? .35 : .45)
+      set(dust.mat, L ? 0x7d9a6c : 0x6a9a50, L ? .45 : .65)
       set(screenMat, 0xffffff, L ? 1 : .96)
       fog.color.set(L ? 0xf2f0e8 : 0x090d0b)
     }
@@ -274,6 +343,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       const r = el.getBoundingClientRect()
       hoverX = Math.max(-1.2, Math.min(1.2, ((e.clientX - r.left) / r.width) * 2 - 1))
       hoverY = Math.max(-1.2, Math.min(1.2, -(((e.clientY - r.top) / r.height) * 2 - 1)))
+      mouseIn = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
       if (dragging) {
         dragOffset += (e.clientX - px) * .007
         dragPitch = Math.max(-.5, Math.min(.5, dragPitch + (e.clientY - py) * .007))
@@ -282,9 +352,11 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       recompute()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || (e.target as HTMLElement)?.closest('input,textarea,button')) return
+      if (e.code !== 'Space' || (e.target instanceof Element && e.target.closest('input,textarea,button'))) return
       e.preventDefault(); dragOffset += Math.PI * 2; recompute()
     }
+    const onLeave = (e: MouseEvent) => { if (!e.relatedTarget) mouseIn = false }
+    document.addEventListener('mouseout', onLeave)
     el.addEventListener('pointerdown', onDown)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointermove', onMove, { passive: true })
@@ -310,6 +382,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       group.position.y = Math.sin(t * 1.5) * .035
       dust.mesh.rotation.y = t * .02
       dust.mesh.rotation.x = t * .01
+      pushDust()
       draw(t * 1000)
       renderer.render(scene, camera)
     }
@@ -322,6 +395,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('keydown', onKey)
+      document.removeEventListener('mouseout', onLeave)
       scene.traverse(obj => {
         if (obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
           obj.geometry.dispose()

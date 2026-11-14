@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, ChevronRight, Database, Home, Layers3, Moon, Search, Sun, X } from 'lucide-react'
+import { ArrowRight, ChevronRight, Database, Home, Layers3, Moon, Sun, X } from 'lucide-react'
 import MatrixRain from './components/MatrixRain'
 import PointCloudComputer from './components/PointCloudComputer'
 import Logo from './components/Logo'
 import Visualizer from './components/Visualizer'
+import Typewriter from './components/Typewriter'
 import { byCategory, categories, difficulties, getModule, modules } from './algorithms/registry'
 import type { Category, Difficulty, ModuleId } from './algorithms/registry'
 
@@ -40,6 +41,7 @@ export default function App() {
       </nav>
       <div className="top-right"><button className="utility-toggle" onClick={() => setLightMode(v => !v)}>{lightMode ? <Moon size={17} /> : <Sun size={17} />} {lightMode ? t('DARK', '深色') : t('LIGHT', '淺色')}</button><span className="top-divider" /><button className="utility-toggle language-toggle" onClick={() => setLanguage(v => v === 'en' ? 'zh' : 'en')}>{t('中文', 'EN')}</button></div>
     </header>
+    <div key={`glitch-${page}-${moduleId}`} className="glitch-flash" aria-hidden="true" />
 
     {page === 'home' && <main className="home-screen page-enter">
       <PointCloudComputer light={lightMode} />
@@ -55,9 +57,9 @@ export default function App() {
     </main>}
 
     {page === 'library' && <main className="workspace library-page page-enter">
-      <div className="page-heading"><h1>{t('Algorithm Library', '演算法庫')}</h1></div>
+      <div className="page-heading"><h1><Typewriter text={t('Algorithm Library', '演算法庫')} /></h1></div>
       <div className="library-tools">
-        <label className="search-box"><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('Search all algorithms…', '搜尋所有演算法…')} spellCheck={false} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button>}</label>
+        <label className="search-box"><span className="prompt">&gt;</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search algorithms_', '搜尋演算法_')} spellCheck={false} aria-label={t('Search algorithms', '搜尋演算法')} /><span className={`match-count ${searching && !visible.length ? 'none' : ''}`}>{searching ? `${visible.length} ${visible.length === 1 ? t('MATCH', '筆') : t('MATCHES', '筆')}` : `${modules.length} ${t('MODULES', '個模組')}`}</span>{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={14} /></button>}</label>
         <div className="difficulty-filter" role="group" aria-label={t('Difficulty', '難度')}>
           <button className={difficulty === 'all' ? 'picked' : ''} onClick={() => setDifficulty('all')}>{t('ALL', '全部')}</button>
           {difficulties.map(d => <button key={d.id} className={difficulty === d.id ? 'picked' : ''} onClick={() => setDifficulty(d.id)}><i className={`diff-dot diff-${d.id}`} />{zh ? d.zh : d.en}</button>)}
@@ -70,7 +72,7 @@ export default function App() {
           </button>)}
         </aside>
         <section className="module-list">
-          <div className="module-toolbar"><span>{searching ? <>{t('SEARCH RESULTS', '搜尋結果')} <b>“{query.trim()}”</b></> : <><b>{String(categories.findIndex(c => c.id === category) + 1).padStart(2, '0')}</b> / {zh ? currentCat.zh : currentCat.en}</>}</span><span>{visible.length} {t('MODULES', '個模組')}</span></div>
+          <div className="module-toolbar"><span>{searching ? <>{t('SEARCH RESULTS', '搜尋結果')} <b>“{query.trim()}”</b></> : <><b>{String(categories.findIndex(c => c.id === category) + 1).padStart(2, '0')}</b> / <Typewriter key={category + language} text={zh ? currentCat.zh : currentCat.en} speed={30} /></>}</span><span>{visible.length} {t('MODULES', '個模組')}</span></div>
           <div className="module-rows" key={`${searching ? 'q:' + query.trim() : category}|${difficulty}`}>
             {visible.map(m => {
               const ci = categories.findIndex(c => c.id === m.category), i = byCategory(m.category).indexOf(m)

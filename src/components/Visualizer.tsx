@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Code2, Pause, Play, Plus, RotateCcw, Shuffle, SkipBack, SkipForward, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Code2, Pause, Play, Plus, RotateCcw, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X } from 'lucide-react'
+import { beep, chime, pitch, readPref, trackIds, unlockAudio, writePref } from './fx'
 import { generateSteps } from '../algorithms/sorting'
 import type { Algorithm, Step as SortStep } from '../algorithms/sorting'
 import { generateSearchSteps } from '../algorithms/searching'
@@ -31,6 +32,7 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
   const [speed, setSpeed] = useState(550)
   const [step, setStep] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [soundOn, setSoundOn] = useState(() => readPref('algolens-sound', false))
 
   const parsed = useMemo(() => values.split(',').map(v => Number(v.trim())).filter(v => values.trim() !== '' && Number.isFinite(v)), [values])
   const arr = parsed.length >= 2 ? parsed.slice(0, 100) : [5, 2]
@@ -49,6 +51,14 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
   }, [mod, values, target, parsedGraph, graphStart, fibN, f0, f1, items, capacity, strX, strY]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = steps[Math.min(step, steps.length - 1)]
+  const done = steps.length > 1 && step >= steps.length - 1
+  const ids = useMemo(() => mod.category === 'sorting' ? trackIds((steps as SortStep[]).map(s => s.array)) : null, [steps, mod.category])
+  const marks = useMemo(() => steps.map((st, i): string => {
+    if (mod.category === 'sorting') return (st as SortStep).swapped.length ? 'swap' : ''
+    if (mod.category === 'searching') return (st as SearchStep).found !== null ? 'find' : ''
+    if (mod.category === 'graph') return i > 0 && (st as GraphStep).visited.length > (steps[i - 1] as GraphStep).visited.length ? 'visit' : ''
+    return (st as DPStep).active && i > 0 && (st as DPStep).table.flat().filter(v => v !== null).length > (steps[i - 1] as DPStep).table.flat().filter(v => v !== null).length ? 'fill' : ''
+  }), [steps, mod.category])
   const go = (next: number) => { setStep(Math.max(0, Math.min(steps.length - 1, next))); setPlaying(false) }
   const reset = () => { setStep(0); setPlaying(false) }
   const edit = <V,>(fn: (v: V) => void) => (v: V) => { fn(v); reset() }
@@ -63,6 +73,42 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
     return () => window.clearTimeout(id)
   }, [playing, step, speed, steps.length])
 
+  // Keyboard: Space = run/pause, arrows = step, Home = reset.
+  const playRef = useRef(() => {})
+  playRef.current = () => { if (step >= steps.length - 1) setStep(0); setPlaying(p => !p) }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target instanceof Element ? e.target : null
+      if (el?.closest('input, textarea, select, [contenteditable="true"]') || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.code === 'Space') { e.preventDefault(); playRef.current() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setPlaying(false); setStep(s => Math.min(steps.length - 1, s + 1)) }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); setPlaying(false); setStep(s => Math.max(0, s - 1)) }
+      else if (e.key === 'Home') { e.preventDefault(); setPlaying(false); setStep(0) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [steps.length])
+
+  // Sound of sorting: beep per step, pitched by the values involved.
+  useEffect(() => {
+    if (!soundOn) return
+    if (done) { chime(); return }
+    if (mod.category === 'sorting' || mod.category === 'searching') {
+      const st = current as SortStep & SearchStep
+      const max = Math.max(1, ...st.array)
+      const idx = mod.category === 'sorting' ? st.comparing : st.checking
+      idx.forEach((i, k) => beep(pitch(st.array[i], max), { delay: k * .035, type: (st as SortStep).swapped?.length ? 'square' : 'triangle', vol: .04 }))
+    } else if (mod.category === 'graph') {
+      const st = current as GraphStep
+      const k = st.current ? parsedGraph.nodes.findIndex(n => n.id === st.current) : -1
+      if (k >= 0) beep(pitch(k + 1, parsedGraph.nodes.length + 1), { vol: .04 })
+    } else {
+      const st = current as DPStep
+      if (st.active) { const v = st.table[st.active[0]][st.active[1]]; const max = Math.max(1, ...st.table.flat().map(x => x ?? 0)); beep(pitch(v ?? 0, max), { vol: .035 }) }
+    }
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleSound = () => { const v = !soundOn; if (v) { unlockAudio(); beep(660, { vol: .04 }) } setSoundOn(v); writePref('algolens-sound', v) }
+
   const cat = categories.find(c => c.id === mod.category)!
   const catIndex = categories.indexOf(cat) + 1
   const modIndex = byCategory(mod.category).findIndex(m => m.id === mod.id) + 1
@@ -74,11 +120,14 @@ export default function Visualizer({ mod, t, zh, onLibrary }: { mod: ModuleDef; 
     <div className="control-strip">
       <div className="control-group"><button className="run-button" onClick={() => { if (step >= steps.length - 1) setStep(0); setPlaying(!playing) }}>{playing ? <Pause size={13} /> : <Play size={13} />} {playing ? t('PAUSE', '暫停') : t('RUN', '執行')}</button><button onClick={() => go(step - 1)}><SkipBack size={13} /> {t('PREV', '上一步')}</button><button onClick={() => go(step + 1)}><SkipForward size={13} /> {t('NEXT', '下一步')}</button><button onClick={reset}><RotateCcw size={13} /> {t('RESET', '重設')}</button></div>
       <label className="speed-control">{t('SPEED', '速度')} <input type="range" min="80" max="1200" step="40" value={1280 - speed} onChange={e => setSpeed(1280 - Number(e.target.value))} /></label>
+      <button className={`sound-toggle ${soundOn ? 'on' : ''}`} onClick={toggleSound} aria-pressed={soundOn} title={t('Sound of sorting', '排序音效')}>{soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />} {t('SOUND', '音效')} {soundOn ? 'ON' : 'OFF'}</button>
       <span className="step-count">{t('STEP', '步驟')} {String(step + 1).padStart(3, '0')} / {String(steps.length).padStart(3, '0')}</span>
     </div>
+    <Timeline step={step} total={steps.length} marks={marks} t={t} category={mod.category} onSeek={i => { setPlaying(false); setStep(i) }} />
     <div className="visual-grid">
       <section className="panel chart-panel" data-id={`RASTER_${mod.category === 'graph' ? 'GRAPH' : mod.category === 'dp' ? 'TABLE' : 'ARR'}`}>
-        {mod.category === 'sorting' && <SortView s={current as SortStep} t={t} algo={mod.id as Algorithm} />}
+        {done && <FinishStamp text={finishText(mod.category, current, t)} />}
+        {mod.category === 'sorting' && <SortView s={current as SortStep} t={t} algo={mod.id as Algorithm} ids={ids?.[Math.min(step, steps.length - 1)]} done={done} />}
         {mod.category === 'searching' && <SearchView s={current as SearchStep} t={t} target={Number(target) || 0} algo={mod.id as SearchAlgorithm} />}
         {mod.category === 'graph' && <GraphView s={current as GraphStep} t={t} algo={mod.id as GraphAlgorithm} graph={graph} onMove={(id, p) => setPosOverride(o => ({ ...o, [id]: p }))} />}
         {mod.category === 'dp' && <DPView s={current as DPStep} t={t} />}
@@ -137,11 +186,37 @@ function InfoStrip({ label, value, legend }: { label: string; value: string; leg
 }
 
 type Tag = { text: string; tone?: 'hot' | 'cold'; lift?: boolean }
-function Bars({ array, cls, above = {}, below = {}, marks = {}, lanes = false }: { array: number[]; cls: (i: number) => string; above?: Record<number, Tag>; below?: Record<number, Tag>; marks?: Record<number, string>; lanes?: boolean }) {
+function Bars({ array, cls, above = {}, below = {}, marks = {}, lanes = false, ids, sweep = false }: { array: number[]; cls: (i: number) => string; above?: Record<number, Tag>; below?: Record<number, Tag>; marks?: Record<number, string>; lanes?: boolean; ids?: number[]; sweep?: boolean }) {
   const max = Math.max(1, ...array.map(Math.abs))
   const dense = array.length > 16
-  return <div className={`bar-stage ${dense ? 'dense' : ''} ${lanes ? 'lanes' : ''}`}>
-    <div className="bar-chart">{array.map((v, i) => <div className="bar-column" key={`${i}-${v}`}>
+  const chartRef = useRef<HTMLDivElement>(null)
+  const prevPos = useRef<Map<number, number>>(new Map())
+  // FLIP: when an element changes slot, slide its bar from the old column to the new one.
+  useLayoutEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !ids) { prevPos.current = new Map(); return }
+    const cols = Array.from(chart.children) as HTMLElement[]
+    const lefts = cols.map(c => c.offsetLeft)
+    const prev = prevPos.current
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ids.forEach((id, pos) => {
+      const from = prev.get(id)
+      if (from === undefined || from === pos || reduce || lefts[from] === undefined) return
+      const bar = cols[pos]?.querySelector('.bar') as HTMLElement | null
+      if (!bar) return
+      const dx = lefts[from] - lefts[pos]
+      bar.style.transition = 'none'; void bar.offsetWidth
+      requestAnimationFrame(() => { bar.style.transition = '' })
+      bar.animate([
+        { transform: `translate(${dx}px, 0)`, zIndex: 3 },
+        { transform: `translate(${dx / 2}px, ${dx > 0 ? 14 : -14}px)`, zIndex: 3, offset: .5 },
+        { transform: 'translate(0, 0)', zIndex: 3 }
+      ], { duration: 340, easing: 'cubic-bezier(.3,.7,.2,1)' })
+    })
+    prevPos.current = new Map(ids.map((id, pos) => [id, pos]))
+  })
+  return <div className={`bar-stage ${dense ? 'dense' : ''} ${lanes ? 'lanes' : ''} ${sweep ? 'sweep' : ''}`}>
+    <div className="bar-chart" ref={chartRef}>{array.map((v, i) => <div className="bar-column" key={ids ? i : `${i}-${v}`} style={{ ['--i' as string]: i }}>
       <div className="tag-slot">{above[i] && <span className={`ptr-tag ${above[i].tone ?? ''} ${above[i - 1] && !above[i - 1].lift ? 'lift' : ''}`}>[ {above[i].text} ]<b>▼</b></span>}</div>
       <div className="bar-well"><div className={`bar ${cls(i)}`} style={{ height: `${Math.max(4, Math.abs(v) / max * 86)}%` }}><span>{v}</span></div></div>
       <small className={marks[i] ? 'idx marked' : 'idx'}>[{i}]{marks[i] ?? ''}</small>
@@ -154,7 +229,7 @@ const SORT_NAMES: Record<Algorithm, [string, string, string]> = {
   bubble: ['j', 'j', 'j+1'], selection: ['min', 'j', 'min'], insertion: ['key', 'j', 'j+1'], merge: ['k', 'L', 'R']
 }
 
-function SortView({ s, t, algo }: { s: SortStep; t: T; algo: Algorithm }) {
+function SortView({ s, t, algo, ids, done }: { s: SortStep; t: T; algo: Algorithm; ids?: number[]; done: boolean }) {
   const [single, first, second] = SORT_NAMES[algo]
   const above: Record<number, Tag> = {}, marks: Record<number, string> = {}
   if (s.comparing.length === 1) above[s.comparing[0]] = { text: `${single}=${s.comparing[0]}`, tone: s.swapped.length ? 'hot' : undefined }
@@ -168,7 +243,7 @@ function SortView({ s, t, algo }: { s: SortStep; t: T; algo: Algorithm }) {
     <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('ARRAY', '陣列')} / {s.array.length} {t('ELEMENTS', '個元素')}</span></div>
     <InfoStrip label={t('SORTED REGION:', '已排序區：')} value={`[${s.sorted.length} / ${s.array.length}] ${'█'.repeat(Math.round(s.sorted.length / s.array.length * 12)).padEnd(12, '·')}`}
       legend={[{ cls: 'sw-default', label: t('Unsorted', '未排序') }, { cls: 'sw-compare', label: t('Compare', '比較中') }, { cls: 'sw-swap', label: t('Active / Swap', '移動中') }, { cls: 'sw-sorted', label: t('Sorted', '已排序') }]} />
-    <Bars array={s.array} above={above} marks={marks} cls={i => s.swapped.includes(i) ? 'bar-swap' : s.comparing.includes(i) ? 'bar-compare' : s.sorted.includes(i) ? 'bar-sorted' : ''} />
+    <Bars array={s.array} ids={ids} sweep={done} above={above} marks={marks} cls={i => s.swapped.includes(i) ? 'bar-swap' : s.comparing.includes(i) ? 'bar-compare' : s.sorted.includes(i) ? 'bar-sorted' : ''} />
   </>
 }
 
@@ -185,7 +260,7 @@ function SearchView({ s, t, target, algo }: { s: SearchStep; t: T; target: numbe
     <div className="panel-heading"><span>{t('EXECUTION VISUALIZATION', '執行視覺化')}</span><span className="panel-tag">{t('TARGET', '目標')} = {target}</span></div>
     <InfoStrip label={t('SEARCH WINDOW:', '搜尋範圍：')} value={s.range ? `[lo: ${s.range[0]} ${'·'.repeat(10)} hi: ${s.range[1]}]` : s.found !== null ? `[${t('HIT AT', '命中')} ${s.found}]` : '[ — ]'}
       legend={[{ cls: 'sw-sorted', label: t('Window', '範圍') }, { cls: 'sw-compare', label: t('Probe', '檢查中') }, { cls: 'sw-dim', label: t('Eliminated', '已排除') }, { cls: 'sw-swap', label: t('Found', '找到') }]} />
-    <Bars lanes array={s.array} above={above} below={below} marks={marks} cls={i => s.found === i ? 'bar-swap' : s.checking.includes(i) ? 'bar-compare' : s.eliminated.includes(i) ? 'bar-dim' : s.range && i >= s.range[0] && i <= s.range[1] ? 'bar-sorted' : ''} />
+    <Bars lanes sweep={false} array={s.array} above={above} below={below} marks={marks} cls={i => s.found === i ? 'bar-swap' : s.checking.includes(i) ? 'bar-compare' : s.eliminated.includes(i) ? 'bar-dim' : s.range && i >= s.range[0] && i <= s.range[1] ? 'bar-sorted' : ''} />
   </>
 }
 
@@ -256,4 +331,43 @@ function DPView({ s, t }: { s: DPStep; t: T }) {
       </table>
     </div>
   </>
+}
+
+function finishText(category: string, st: AnyStep, t: T) {
+  if (category === 'sorting') return t('SORTED', '排序完成')
+  if (category === 'searching') { const f = (st as SearchStep).found; return f !== null ? `${t('FOUND @', '找到 @')} ${f}` : t('NOT FOUND', '未找到') }
+  if (category === 'graph') return t('TRAVERSAL DONE', '走訪完成')
+  return t('TABLE COMPLETE', '表格完成')
+}
+
+function FinishStamp({ text }: { text: string }) {
+  const ok = !/NOT FOUND|未找到/.test(text)
+  const inner = `  ${text}  ${ok ? '✓' : '✗'}  `
+  const rule = '+' + '-'.repeat([...inner].length) + '+'
+  return <pre className={`finish-stamp ${ok ? '' : 'miss'}`} aria-live="polite">{rule}{'\n'}|{inner}|{'\n'}{rule}</pre>
+}
+
+function Timeline({ step, total, marks, t, category, onSeek }: { step: number; total: number; marks: string[]; t: T; category: string; onSeek: (i: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const seek = (clientX: number) => {
+    const r = ref.current!.getBoundingClientRect()
+    onSeek(Math.round(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * (total - 1)))
+  }
+  const pct = (i: number) => (total <= 1 ? 0 : (i / (total - 1)) * 100)
+  const markName = category === 'sorting' ? t('SWAPS', '交換') : category === 'searching' ? t('FOUND', '找到') : category === 'graph' ? t('VISITS', '走訪') : t('FILLS', '填表')
+  const ticks = marks.map((m, i) => (m ? i : -1)).filter(i => i >= 0)
+  return <div className="timeline-row">
+    <div className="timeline" ref={ref} role="slider" aria-label={t('Step timeline', '步驟時間軸')} aria-valuemin={1} aria-valuemax={total} aria-valuenow={step + 1} tabIndex={-1}
+      onPointerDown={e => { dragging.current = true; ref.current?.setPointerCapture(e.pointerId); seek(e.clientX) }}
+      onPointerMove={e => { if (dragging.current) seek(e.clientX) }}
+      onPointerUp={() => { dragging.current = false }} onPointerCancel={() => { dragging.current = false }}>
+      <div className="tl-track" style={total <= 160 ? { backgroundSize: `${100 / Math.max(1, total - 1)}% 100%` } : undefined}>
+        <div className="tl-fill" style={{ width: `${pct(step)}%` }} />
+        {ticks.map(i => <i key={i} className={`tl-tick ${marks[i]} ${i <= step ? 'past' : ''}`} style={{ left: `${pct(i)}%` }} />)}
+        <div className="tl-head" style={{ left: `${pct(step)}%` }}><span>{step + 1}</span></div>
+      </div>
+    </div>
+    <div className="tl-meta"><span><i className="tl-key" /> {markName} {ticks.length}</span><span className="kbd-hints"><kbd>SPACE</kbd> {t('RUN', '執行')} <kbd>←</kbd><kbd>→</kbd> {t('STEP', '步進')}</span></div>
+  </div>
 }
