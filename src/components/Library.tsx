@@ -23,15 +23,17 @@ type Props = {
   zh: boolean
   light: boolean
   powerOn: boolean
+  returnTo: ModuleId | null
   onOpen: (id: ModuleId) => void
 }
 
-export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
+export default function Library({ t, zh, light, powerOn, returnTo, onOpen }: Props) {
   const [category, setCategory] = useState<Category>(() => { try { const c = sessionStorage.getItem('algolens-cat') as Category | null; return c && categories.some(x => x.id === c) ? c : 'sorting' } catch { return 'sorting' } })
   const [query, setQuery] = useState('')
   const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all')
   const [sel, setSel] = useState(0)
   const [firstBoot] = useState(() => !bootedThisLoad)
+  const [inserting, setInserting] = useState<ModuleId | null>(null)
   const search = useRef<HTMLInputElement>(null)
   const grid = useRef<HTMLDivElement>(null)
   useEffect(() => { bootedThisLoad = true }, [])
@@ -44,7 +46,26 @@ export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
     return pool.filter(m => (difficulty === 'all' || m.difficulty === difficulty) &&
       (!q || [m.en, m.zh, m.tagEn, m.tagZh, m.id, categories.find(c => c.id === m.category)!.en].some(f => f.toLowerCase().includes(q))))
   }, [query, category, difficulty])
-  useEffect(() => { setSel(0) }, [query, category, difficulty])
+  const firstSel = useRef(true)
+  useEffect(() => {
+    if (firstSel.current) {
+      firstSel.current = false
+      const k = returnTo ? visible.findIndex(m => m.id === returnTo) : -1
+      if (k > 0) { setSel(k); requestAnimationFrame(() => grid.current?.children[k]?.scrollIntoView({ block: 'nearest' })) }
+      return
+    }
+    setSel(0)
+  }, [query, category, difficulty]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Insert cartridge": the picked card drops into the slot, the screen flickers, then the program loads.
+  const launch = (id: ModuleId) => {
+    if (inserting) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { onOpen(id); return }
+    setInserting(id)
+    window.setTimeout(() => onOpen(id), 560)
+  }
+  const launchRef = useRef(launch)
+  launchRef.current = launch
 
   const pickCategory = (c: Category) => { setCategory(c); setQuery('') }
 
@@ -64,7 +85,7 @@ export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
       if (inInput) {
         if (e.key === 'Escape') { (target as HTMLElement).blur() }
         else if (e.key === 'ArrowDown') { e.preventDefault(); (target as HTMLElement).blur() }
-        else if (e.key === 'Enter' && visible[sel]) { e.preventDefault(); onOpen(visible[sel].id) }
+        else if (e.key === 'Enter' && visible[sel]) { e.preventDefault(); launchRef.current(visible[sel].id) }
         return
       }
       if (e.key === '/') { e.preventDefault(); search.current?.focus(); return }
@@ -77,7 +98,7 @@ export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
       else if (e.key === 'ArrowUp') next = sel - columns()
       else if (e.key === 'Enter') {
         if (target?.closest('button')) return   // a focused button already handles Enter
-        e.preventDefault(); onOpen(visible[sel].id); return
+        e.preventDefault(); launchRef.current(visible[sel].id); return
       } else return
       e.preventDefault()
       next = Math.max(0, Math.min(visible.length - 1, next))
@@ -86,13 +107,13 @@ export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onOpen])
+  }, [])
 
   const current = categories.find(c => c.id === category)!
   const dir = searching ? `GREP "${query.trim().toUpperCase()}"` : `DIR: /ALGORITHMS/${SHORT[category]}`
   const picked = visible[sel]
 
-  return <div className={`crt-frame ${powerOn ? 'power-on' : ''} ${firstBoot ? 'first-boot' : ''}`}>
+  return <div className={`crt-frame ${powerOn ? 'power-on' : ''} ${firstBoot ? 'first-boot' : ''} ${inserting ? 'inserting' : ''}`}>
     <div className="crt-glass">
       <DotField light={light} />
       <div className="crt-inner">
@@ -129,12 +150,12 @@ export default function Library({ t, zh, light, powerOn, onOpen }: Props) {
             <span className="hide-sm">{picked ? `/algorithms/${picked.category}/${picked.id}.vis` : ''}</span>
           </div>
 
-          <div className="cart-grid" ref={grid} key={`${searching ? 'q:' + query.trim() : category}|${difficulty}`}>
+          <div className={`cart-grid ${inserting ? 'loading' : ''}`} ref={grid} key={`${searching ? 'q:' + query.trim() : category}|${difficulty}`}>
             {visible.map((m, idx) => {
               const ci = categories.findIndex(c => c.id === m.category), i = byCategory(m.category).indexOf(m)
               const diff = difficulties.find(d => d.id === m.difficulty)!
               const on = idx === sel
-              return <button className={`cart ${on ? 'sel' : ''}`} key={m.id} onClick={() => onOpen(m.id)}
+              return <button className={`cart ${on ? 'sel' : ''} ${inserting === m.id ? 'inserting' : ''} ${returnTo === m.id && !inserting ? 'ejected' : ''}`} key={m.id} onClick={() => launch(m.id)}
                 onMouseEnter={() => setSel(idx)} onFocus={() => setSel(idx)} style={{ ['--i' as string]: idx }}>
                 <span className="cart-label">
                   <span className="cart-cursor" aria-hidden="true">&gt;</span>

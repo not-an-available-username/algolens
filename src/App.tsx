@@ -18,10 +18,11 @@ export default function App() {
   const [language, setLanguage] = useState<'en' | 'zh'>('en')
   const [zooming, setZooming] = useState(false)
   const [powerOn, setPowerOn] = useState(false)
+  const [returnTo, setReturnTo] = useState<ModuleId | null>(null)
   const zoomTimer = useRef(0)
   const zh = language === 'zh'
   const t = (en: string, cn: string) => zh ? cn : en
-  const setPage = (p: Page) => { window.clearTimeout(zoomTimer.current); setZooming(false); setPowerOn(false); setPageRaw(p) }
+  const setPage = (p: Page) => { window.clearTimeout(zoomTimer.current); setZooming(false); setPowerOn(false); setReturnTo(page === 'visualizer' && p === 'library' ? moduleId : null); setPageRaw(p) }
   const open = useCallback((id: ModuleId) => { setModuleId(id); setPowerOn(false); setPageRaw('visualizer'); window.scrollTo(0, 0) }, [])
   // Home -> library: the camera dives into the 3D computer's screen, then the library powers on inside a CRT.
   const enterLibrary = () => {
@@ -59,10 +60,10 @@ export default function App() {
     </main>}
 
     {page === 'library' && <main className="workspace library-page page-enter">
-      <Library t={t} zh={zh} light={lightMode} powerOn={powerOn} onOpen={open} />
+      <Library t={t} zh={zh} light={lightMode} powerOn={powerOn} returnTo={returnTo} onOpen={open} />
     </main>}
 
-    {page === 'visualizer' && <Visualizer key={moduleId} mod={getModule(moduleId)} t={t} zh={zh} onLibrary={() => setPage('library')} />}
+    {page === 'visualizer' && <Visualizer key={moduleId} mod={getModule(moduleId)} t={t} zh={zh} light={lightMode} onLibrary={() => setPage('library')} />}
 
     <footer className="global-footer"><span>ALGOLENS // {t('ALGORITHM VISUALIZER', '演算法視覺化工具')}</span></footer>
   </div>
