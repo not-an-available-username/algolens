@@ -104,8 +104,10 @@ const ASCII = [
   '           |___/                        '
 ]
 
-export default function PointCloudComputer({ light = false }: { light?: boolean }) {
+export default function PointCloudComputer({ light = false, zoom = false }: { light?: boolean; zoom?: boolean }) {
   const host = useRef<HTMLDivElement>(null)
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
   const lightRef = useRef(light)
   lightRef.current = light
   useEffect(() => {
@@ -340,6 +342,7 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
     const onDown = (e: PointerEvent) => { dragging = true; px = e.clientX; py = e.clientY }
     const onUp = () => { dragging = false }
     const onMove = (e: PointerEvent) => {
+      if (zoomRef.current) return
       const r = el.getBoundingClientRect()
       hoverX = Math.max(-1.2, Math.min(1.2, ((e.clientX - r.left) / r.width) * 2 - 1))
       hoverY = Math.max(-1.2, Math.min(1.2, -(((e.clientY - r.top) / r.height) * 2 - 1)))
@@ -373,12 +376,34 @@ export default function PointCloudComputer({ light = false }: { light?: boolean 
 
     const clock = new THREE.Clock()
     let frame = 0
+    // ---- Zoom into the screen (home -> library transition) ----
+    const ZOOM_S = .95
+    let zoomStart = -1, zoomFromZ = 0, zoomFromY = 0
+    const lookFrom = new THREE.Vector3(0, .05, 0), lookTo = new THREE.Vector3(0, .38, 0), look = new THREE.Vector3()
+    const zoomCamera = (t: number) => {
+      if (!zoomRef.current) {
+        if (zoomStart >= 0) { zoomStart = -1; camera.position.y = zoomFromY; resize(); camera.lookAt(lookFrom) }
+        return false
+      }
+      if (zoomStart < 0) {
+        zoomStart = t; zoomFromZ = camera.position.z; zoomFromY = camera.position.y
+        const turns = Math.round(group.rotation.y / (Math.PI * 2)) * Math.PI * 2
+        dragOffset = turns; dragPitch = 0; hoverX = 0; hoverY = 0; recompute(); targetRotY = turns; targetRotX = 0
+      }
+      const k = Math.min(1, (t - zoomStart) / ZOOM_S)
+      const e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2
+      camera.position.set(0, zoomFromY + (.38 - zoomFromY) * e, zoomFromZ + (1.09 + .32 - zoomFromZ) * e)
+      camera.lookAt(look.lerpVectors(lookFrom, lookTo, e))
+      return true
+    }
     const animate = () => {
       frame = requestAnimationFrame(animate)
       const t = clock.getElapsedTime()
       applyTheme()
-      group.rotation.y += (targetRotY - group.rotation.y) * .06
-      group.rotation.x += (targetRotX - group.rotation.x) * .06
+      const zooming = zoomCamera(t)
+      const ease = zooming ? .16 : .06
+      group.rotation.y += (targetRotY - group.rotation.y) * ease
+      group.rotation.x += (targetRotX - group.rotation.x) * ease
       group.position.y = Math.sin(t * 1.5) * .035
       dust.mesh.rotation.y = t * .02
       dust.mesh.rotation.x = t * .01
